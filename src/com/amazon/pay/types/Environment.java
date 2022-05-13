@@ -1,26 +1,27 @@
 /**
- * Copyright 2016-2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
  * A copy of the License is located at
  *
- *  http://aws.amazon.com/apache2.0
+ * http://aws.amazon.com/apache2.0
  *
  * or in the "license" file accompanying this file. This file is distributed
  * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+
 package com.amazon.pay.types;
 
-/*
- * This enum class represents region codes for
- * United States(US), United Kingdom(UK), Germany(DE) and Japan(JP)
- *
- * DEVO Regions are for Amazon use only (integration test pipeline).
+/**
+ * This represents an enum class identifying the environment LIVE or SANDBOX mode.
+ * Sandbox mode enables you to conduct an end-to-end test of
+ * your integration prior to going live.
  */
 
-public enum Region {
-    DE, UK, US, JP, EU;
+public enum Environment {
+    LIVE,
+    SANDBOX;
 }

@@ -85,12 +85,25 @@ import com.amazon.pay.response.parser.ValidateBillingAgreementResponseData;
 import com.amazon.pay.types.AmazonReferenceIdType;
 import com.amazon.pay.types.ServiceConstants;
 import com.amazon.pay.types.User;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+import org.json.JSONException;
+import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URLDecoder;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 
 /*
@@ -100,6 +113,8 @@ public class PayClient implements Client  {
 
     private final RequestHelper helper;
     private final PayConfig payConfig;
+    private final PayConfiguration payConfiguration;
+    private final RequestSigner requestSigner;
 
     /**
      * Constructs a new client to invoke service methods on
@@ -111,9 +126,259 @@ public class PayClient implements Client  {
     public PayClient(Config config) {
         this.payConfig = (PayConfig)config;
         this.helper = new RequestHelper(this.payConfig);
+        this.payConfiguration = null;
+        this.requestSigner = null;
     }
 
+    public PayClient(final PayConfiguration payConfiguration) throws AmazonClientException {
+        this.helper = null;
+        this.payConfig = null;
+        this.payConfiguration = payConfiguration;
+        requestSigner = new RequestSigner(payConfiguration);
+    }
 
+    /**
+     * The CreateCheckoutSession operation is used to create a CheckoutSession for a buyer
+     * and pass the Id as part of button click.
+     *
+     * @param payload JSONObject request body
+     * @param header Map&lt;String, String&gt; containining key-value pair of required headers (e.g., keys such as x-amz-pay-idempotency-key, x-amz-pay-authtoken)
+     * @return The response from the CreateCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse createCheckoutSession(final JSONObject payload, final Map<String, String> header) throws AmazonClientException {
+        final URI createCheckoutSessionURI = V2Util.getServiceURI(payConfiguration, com.amazon.pay.impl.ServiceConstants.CHECKOUT_SESSIONS);
+        final Map<String, String> headerMap = V2Util.updateHeader(header);
+        return callAPI(createCheckoutSessionURI, "POST", null, payload.toString(), headerMap);
+    }
+
+    /**
+     * The CreateCheckoutSession operation is used to create a CheckoutSession for a buyer
+     * and pass the Id as part of button click.
+     *
+     * @param payload JSONObject request body
+     * @return The response from the CreateCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse createCheckoutSession(final JSONObject payload) throws AmazonClientException {
+        return createCheckoutSession(payload, null);
+    }
+
+    /**
+     * The GetCheckoutSession operation is used to get checkout session details that contain
+     * all session associated details.
+     *
+     * @param checkoutSessionId Checkout Session ID provided by Checkout v2 service
+     * @param header Map&lt;String, String&gt; containining key-value pair of required headers (e.g., keys such as x-amz-pay-idempotency-key, x-amz-pay-authtoken)
+     * @return The response from the GetCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse getCheckoutSession(final String checkoutSessionId, final Map<String, String> header) throws AmazonClientException {
+        final URI checkoutSessionURI = V2Util.getServiceURI(payConfiguration, com.amazon.pay.impl.ServiceConstants.CHECKOUT_SESSIONS);
+        final URI getCheckoutSessionURI = checkoutSessionURI.resolve(checkoutSessionURI.getPath() + "/" + checkoutSessionId);
+        return callAPI(getCheckoutSessionURI, "GET", null, "", header);
+    }
+
+    /**
+     * The GetCheckoutSession operation is used to get checkout session details that contain
+     * all session associated details.
+     *
+     * @param checkoutSessionId Checkout Session ID provided by Checkout v2 service
+     * @return The response from the GetCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse getCheckoutSession(final String checkoutSessionId) throws AmazonClientException {
+        return getCheckoutSession(checkoutSessionId, null);
+    }
+
+    /**
+     * The UpdateCheckoutSession operation is used to update payment details for a session.
+     *
+     * @param checkoutSessionId Checkout Session ID provided by Checkout v2 service
+     * @param payload JSONObject request body
+     * @param header Map&lt;String, String&gt; containining key-value pair of required headers (e.g., keys such as x-amz-pay-idempotency-key, x-amz-pay-authtoken)
+     * @return The response from the UpdateCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse updateCheckoutSession(final String checkoutSessionId, final JSONObject payload, final Map<String, String> header) throws AmazonClientException {
+        final URI checkoutSessionURI = V2Util.getServiceURI(payConfiguration, com.amazon.pay.impl.ServiceConstants.CHECKOUT_SESSIONS);
+        final URI updateCheckoutSessionURI = checkoutSessionURI.resolve(checkoutSessionURI.getPath() + "/" + checkoutSessionId);
+        return callAPI(updateCheckoutSessionURI, "PATCH", null, payload.toString(), header);
+    }
+
+    /**
+     * The UpdateCheckoutSession operation is used to update payment details for a session.
+     *
+     * @param checkoutSessionId Checkout Session ID provided by Checkout v2 service
+     * @param payload JSONObject request body
+     * @return The response from the UpdateCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse updateCheckoutSession(final String checkoutSessionId, final JSONObject payload) throws AmazonClientException {
+        return updateCheckoutSession(checkoutSessionId, payload, null);
+    }
+
+    /**
+     * The CompleteCheckoutSession operation is used to confirm completion of a checkout session
+     *
+     * @param checkoutSessionId Checkout Session ID provided by Checkout v2 service
+     * @param payload JSONObject request body
+     * @param header Map&lt;String, String&gt; containining key-value pair of required headers (e.g., keys such as x-amz-pay-idempotency-key, x-amz-pay-authtoken)
+     * @return The response from the CompleteCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse completeCheckoutSession(final String checkoutSessionId, final JSONObject payload, final Map<String, String> header) throws AmazonClientException {
+        final URI checkoutSessionURI = V2Util.getServiceURI(payConfiguration, com.amazon.pay.impl.ServiceConstants.CHECKOUT_SESSIONS);
+        final URI completeCheckoutSessionURI = checkoutSessionURI.resolve(checkoutSessionURI.getPath() + "/" + checkoutSessionId + "/" + "complete");
+        return callAPI(completeCheckoutSessionURI, "POST", null, payload.toString(), header);
+    }
+
+    /**
+     * The CompleteCheckoutSession operation is used to confirm completion of a checkout session.
+     *
+     * @param checkoutSessionId Checkout Session ID provided by Checkout v2 service
+     * @param payload JSONObject request body
+     * @return The response from the CompleteCheckoutSession service API, as
+     * returned by Amazon Pay.
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse completeCheckoutSession(final String checkoutSessionId, final JSONObject payload) throws AmazonClientException {
+        return completeCheckoutSession(checkoutSessionId, payload, null);
+    }
+
+    /**
+     * API to process the request and return the
+     *
+     * @param uri             The uri that needs to be executed
+     * @param httpMethodName  the HTTP request method(GET,PUT,POST etc) to be used
+     * @param queryParameters the query parameters map
+     * @param request         the payload to be sent with the request
+     * @param header          the header of the solution provider
+     * @return response of type AmazonPayResponse
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse callAPI(final URI uri,
+                                     final String httpMethodName,
+                                     final Map<String, List<String>> queryParameters,
+                                     final String request,
+                                     final Map<String, String> header) throws AmazonClientException {
+        Map<String, String> postSignedHeaders;
+
+        postSignedHeaders = requestSigner.signRequest(uri, httpMethodName, queryParameters, request, header);
+        return processRequest(uri, postSignedHeaders, request, httpMethodName);
+    }
+
+    /**
+     * Helper method to send the request and also retry in case the request is throttled
+     *
+     * @param uri               the uri to be executed
+     * @param postSignedHeaders the signed headers
+     * @param payload           the payload to be sent with the request
+     * @param httpMethodName    the HTTP request method(GET,PUT,POST etc) to be used
+     * @return the AmazonPayResponse
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private AmazonPayResponse processRequest(final URI uri,
+                                             final Map<String, String> postSignedHeaders,
+                                             final String payload,
+                                             final String httpMethodName) throws AmazonClientException {
+        List<String> response;
+        String rawResponseObject = null;
+        JSONObject jsonResponse = null;
+
+        final AmazonPayResponse responseObject = new AmazonPayResponse();
+        responseObject.setUrl(uri);
+        responseObject.setMethod(httpMethodName);
+        responseObject.setRawRequest(payload);
+        responseObject.setHeaders(postSignedHeaders);
+        try {
+            long millisBefore = System.currentTimeMillis();
+            response = sendRequest(uri, postSignedHeaders, payload, httpMethodName);
+            int statusCode = Integer.parseInt(response.get(com.amazon.pay.impl.ServiceConstants.RESPONSE_STATUS_CODE));
+            int retry = 0;
+            // Check for service errors
+            while (com.amazon.pay.impl.ServiceConstants.serviceErrors.containsValue(statusCode) &&
+                    retry < payConfiguration.getMaxRetries()) {
+                retry++;
+                //retry request maxRetries number of times
+                long waitTime = V2Util.getExponentialWaitTime(retry);
+                Thread.sleep(waitTime);
+
+                response = sendRequest(uri, postSignedHeaders, payload, httpMethodName);
+                statusCode = Integer.parseInt(response.get(com.amazon.pay.impl.ServiceConstants.RESPONSE_STATUS_CODE));
+            }
+            responseObject.setRetries(retry);
+            responseObject.setStatus(statusCode);
+            responseObject.setDuration(System.currentTimeMillis() - millisBefore);
+            if (response.get(com.amazon.pay.impl.ServiceConstants.RESPONSE_STRING) != null) {
+                // Converting the response string into a JSONObject
+                rawResponseObject = response.get(com.amazon.pay.impl.ServiceConstants.RESPONSE_STRING);
+                jsonResponse = new JSONObject(response.get(com.amazon.pay.impl.ServiceConstants.RESPONSE_STRING));
+            }
+        } catch (InterruptedException | JSONException e) {
+            throw new AmazonClientException(e.getMessage(), e);
+        }
+        responseObject.setResponse(jsonResponse);
+        responseObject.setRawResponse(rawResponseObject);
+        responseObject.setRequestId(response.get(com.amazon.pay.impl.ServiceConstants.REQUEST_ID));
+
+        return responseObject;
+    }
+
+    /**
+     * Helper method to post the request
+     *
+     * @param uri            the uri to be executed
+     * @param headers        the signed headers
+     * @param payload        the payload ot be sent with the request
+     * @param httpMethodName the HTTP request method(GET,PUT,POST etc) to be used
+     * @return the response and response code
+     * @throws AmazonClientException When an error response is returned by Amazon Pay due to bad request or other issue
+     */
+    private List<String> sendRequest(final URI uri,
+                                     final Map<String, String> headers,
+                                     final String payload,
+                                     final String httpMethodName) throws AmazonClientException {
+        final List<String> result = new ArrayList<>();
+        final StringBuffer response = new StringBuffer();
+        String requestId = null;
+        int responseCode = 0;
+        try (final CloseableHttpClient client = Optional.ofNullable(payConfiguration.getProxySettings()).isPresent()
+                ? V2Util.getCloseableHttpClientWithProxy(payConfiguration.getProxySettings())
+                : HttpClients.createDefault()) {
+            final HttpUriRequest httpUriRequest = V2Util.getHttpUriRequest(uri, httpMethodName, payload);
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                httpUriRequest.addHeader(entry.getKey(), entry.getValue());
+            }
+            final HttpResponse responses = client.execute(httpUriRequest);
+            responseCode = responses.getStatusLine().getStatusCode();
+            if (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) {
+                requestId = responses.getFirstHeader(com.amazon.pay.impl.ServiceConstants.X_AMZ_PAY_REQUEST_ID).toString();
+                String inputLine;
+                try (final BufferedReader in = new BufferedReader(
+                        new InputStreamReader(responses.getEntity().getContent(), V2Util.DEFAULT_ENCODING))) {
+                    while ((inputLine = in.readLine()) != null) {
+                        response.append(inputLine).append(System.lineSeparator());
+                    }
+                }
+            } else {
+                response.append(EntityUtils.toString(responses.getEntity()));
+            }
+        } catch (IOException exception) {
+            throw new AmazonClientException(exception.getMessage(), exception);
+        }
+        result.add(String.valueOf(responseCode));
+        result.add(response.toString());
+        result.add(requestId);
+        return result;
+    }
 
     /**
      * The GetServiceStatus operation returns the operational status of the Amazon Pay API
